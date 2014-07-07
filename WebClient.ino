@@ -18,20 +18,17 @@ int InsideC, OutsideC;
 
 //Variables for the AD conversion and wind direction
 int currentWindDirection, WindPos, WindDirection, ChA, ChB, ChC, ChD, ADVal;
-char* windDirectionArray[17] = {"x", "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
+const char* windDirectionArray[17] = {"x", "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
 
 //Variables for wind speed
 long time;
-int timeDifference;
+long timeDifference;
 int WindCount = 0;
 int WindCounter1 = 0;
 int WindCounter2 = 0;
 int WindDelayMilliSeconds = 0;
 int RevsPerSecx100 = 0;
-int windMILES_PER_HOUR = 0;
-int windMETER_PER_SECOND = 0;
-int windKMS_PER_HOUR = 0;
-int windKNOTS = 0;
+double windKMS_PER_HOUR = 0;
 #define METER_PER_SECOND 1.096;
 #define KMS_PER_HOUR 3.9477;
 #define MILES_PER_HOUR 2.453;
@@ -42,9 +39,6 @@ byte i;
 byte present = 0;
 byte data[12];
 byte addr[8];
-// Similar to F(), but for PROGMEM string pointers rather than literals
-#define F2(progmem_ptr) (const __FlashStringHelper *)progmem_ptr
-
 
 void readSensor() {
  while(true) {
@@ -73,15 +67,12 @@ void readSensor() {
       time = millis();                      //Reset the time count
       RevsPerSecx100 = CalcRevolutionsPerSecondx100(WindCounter1, WindCounter2, timeDifference);
       WindCounter1 = GetWindCount();        //Take the counter to compare next time
-      windMILES_PER_HOUR = (RevsPerSecx100) * MILES_PER_HOUR
-      windMETER_PER_SECOND = (RevsPerSecx100) * METER_PER_SECOND
       windKMS_PER_HOUR = (RevsPerSecx100) * KMS_PER_HOUR
-      windKNOTS = (RevsPerSecx100) * KNOTS
       break;
     default: 
-      Serial.print("Unknown device detected.\tDevice code ");
+      Serial.print(F("Unknown device detected.\tDevice code "));
       Serial.print(addr[0], HEX);
-      Serial.println("");
+      Serial.println();
     }
     delay(1000);
   }
@@ -89,7 +80,7 @@ void readSensor() {
 /////////////////////////////////////////////////////////////////////////////////////////////
 //Returns the revolutions per second x 100 to allow for decimal places to be worked out
 /////////////////////////////////////////////////////////////////////////////////////////////
-int CalcRevolutionsPerSecondx100(int WindCounter1, int WindCounter2, int WindDelayMilliSeconds)
+double CalcRevolutionsPerSecondx100(int WindCounter1, int WindCounter2, long WindDelayMilliSeconds)
 {
   if(WindCounter2 < WindCounter1)         //If the counter has gone past 0...
   {
@@ -97,7 +88,7 @@ int CalcRevolutionsPerSecondx100(int WindCounter1, int WindCounter2, int WindDel
   }
   //We must /2  in the next formula as there are 2 counts per revolution.
   //Multiplying by 100 so I can pass back an int and then work the decimal places out in the loop.
-  RevsPerSecx100 = (((WindCounter2 - WindCounter1) * 100) / 2) / (WindDelayMilliSeconds / 1000); 
+  RevsPerSecx100 = ((WindCounter2 - WindCounter1) / 2) / (WindDelayMilliSeconds / 1000); 
   return(RevsPerSecx100);
 }
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -318,12 +309,12 @@ void Configure_2450()
 Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ, ADAFRUIT_CC3000_VBAT,
                                          SPI_CLOCK_DIVIDER); // you can change this clock speed
 
-#define WLAN_SSID       "PUT_YOUR_SSID"           // cannot be longer than 32 characters!
-#define WLAN_PASS       "PUT_YOUR_PASS"
+#define WLAN_SSID       "YOUR_SSID"           // cannot be longer than 32 characters!
+#define WLAN_PASS       "YOUR_WIFI_PASSWORD"
 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
 #define WLAN_SECURITY   WLAN_SEC_WPA2
 
-#define IDLE_TIMEOUT_MS  30000      // Amount of time to wait (in milliseconds) with no data 
+#define IDLE_TIMEOUT_MS  5000      // Amount of time to wait (in milliseconds) with no data 
                                    // received before closing the connection.  If you know the server
                                    // you're accessing is quick to respond, you can reduce this value.
 
@@ -404,21 +395,21 @@ void loop(void)
     readSensor();
     itoa(OutsideC/10,buffer_1 ,10);
     itoa(OutsideC%10,buffer_2 ,10);
-    strcpy(winddir,windDirectionArray[currentWindDirection]);
     strcpy(outside,buffer_1);
     strcat(outside,".");
     strcat(outside,buffer_2);
-    itoa(windMILES_PER_HOUR/100,buffer_1,10);
+    itoa((int)floor(windKMS_PER_HOUR),buffer_1,10);
     strcpy(windspeed,buffer_1);
+    strcat(windspeed,".");
+    itoa((int)floor((windKMS_PER_HOUR - (int)floor(windKMS_PER_HOUR))*100),buffer_2,10);
+    strcat(windspeed,buffer_2);
     strcpy(body,body_1);
     strcat(body,outside);
     strcat(body,body_2);
     strcat(body,windspeed);
     strcat(body,body_3);
-    strcat(body,winddir);
+    strcat(body,windDirectionArray[currentWindDirection]);
     strcat(body,"\"}]}");
-    //itoa(strlen(body),buffer_2,10);
-    //strcpy(len,buffer_2); 
  
   /* Try connecting to the website.
      Note: HTTP/1.1 protocol is used to keep the server from closing the connection before all data is read.
@@ -426,12 +417,12 @@ void loop(void)
   
    Adafruit_CC3000_Client www = cc3000.connectTCP(ip, 80);
   if (www.connected()) {
-    www.fastrprintln("POST "WEBPAGE" HTTP/1.1");
-    www.fastrprintln("Host: "WEBSITE);
-    www.fastrprintln("Content-Type: application/json");
-    www.fastrprintln("Accept-Encoding: gzip;q=1.0,deflate;q=0.6,identity;q=0.3");
-    www.fastrprintln("Accept: */*");
-    www.fastrprint("Content-Length: ");www.println(strlen(body));
+    www.fastrprintln(F("POST "WEBPAGE" HTTP/1.1"));
+    www.fastrprintln(F("Host: "WEBSITE));
+    www.fastrprintln(F("Content-Type: application/json"));
+    www.fastrprintln(F("Accept-Encoding: gzip;q=1.0,deflate;q=0.6,identity;q=0.3"));
+    www.fastrprintln(F("Accept: */*"));
+    www.fastrprint(F("Content-Length: "));www.println(strlen(body));
     www.println();
     www.println(body);
 
@@ -440,7 +431,7 @@ void loop(void)
   while (www.connected() && (millis() - lastRead < IDLE_TIMEOUT_MS)) {
     while (www.available()) {
       char c = www.read();
-      //Serial.print(c);
+      Serial.print(c);
       lastRead = millis();
     }
   }
@@ -448,7 +439,7 @@ void loop(void)
 
   } else {
     Serial.println(F("Connection failed"));    
-    www = cc3000.connectTCP(ip, 80);
+    return;
   }
 
 
